@@ -14,7 +14,11 @@ export default defineConfig({
       port: 5180,
     },
     proxy: {
-      '/predict': 'http://localhost:7860',
+      '/predict': {
+        target: 'http://localhost:7860',
+        timeout: 300000,
+        proxyTimeout: 300000,
+      },
       '/health': 'http://localhost:7860',
       '/debug': 'http://localhost:7860',
     },

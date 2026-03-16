@@ -50,6 +50,18 @@ export async function predictAutoImage(imageFile, threshold = 0.33) {
     return { url: URL.createObjectURL(blob), count };
 }
 
+// Auto mode — dots
+export async function predictAutoDots(imageFile, threshold = 0.33) {
+    const res = await fetch(`${API_BASE}/predict_auto/dots`, {
+        method: 'POST',
+        body: buildForm(imageFile, threshold),
+    });
+    await handleResponse(res);
+    const count = parseInt(res.headers.get('X-Count'), 10) || null;
+    const blob = await res.blob();
+    return { url: URL.createObjectURL(blob), count };
+}
+
 // Point mode — JSON
 export async function predictPointJson(imageFile, points, labels, threshold = 0.33) {
     const res = await fetch(`${API_BASE}/predict`, {
