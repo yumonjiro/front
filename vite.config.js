@@ -7,9 +7,10 @@ export default defineConfig({
     host: true,
     port: 5180,
     strictPort: true,
+    allowedHosts: ['countobj.geelive-test.com'],
     hmr: {
       // ブラウザからサーバーへのWebSocket接続先を明示
-      host: '192.168.0.86',
+      host: 'countobj.geelive-test.com',
       port: 5180,
     },
     proxy: {
