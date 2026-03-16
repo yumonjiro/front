@@ -45,8 +45,9 @@ export async function predictAutoImage(imageFile, threshold = 0.33) {
         body: buildForm(imageFile, threshold),
     });
     await handleResponse(res);
+    const count = parseInt(res.headers.get('X-Count'), 10) || null;
     const blob = await res.blob();
-    return URL.createObjectURL(blob);
+    return { url: URL.createObjectURL(blob), count };
 }
 
 // Point mode — JSON
@@ -66,8 +67,9 @@ export async function predictPointImage(imageFile, points, labels, threshold = 0
         body: buildForm(imageFile, threshold, { points, labels }),
     });
     await handleResponse(res);
+    const count = parseInt(res.headers.get('X-Count'), 10) || null;
     const blob = await res.blob();
-    return URL.createObjectURL(blob);
+    return { url: URL.createObjectURL(blob), count };
 }
 
 // BBox mode — JSON
@@ -101,6 +103,7 @@ export async function predictBBoxImage(imageFile, bboxes, threshold = 0.33) {
         body: buildForm(imageFile, threshold, { bboxes }),
     });
     await handleResponse(res);
+    const count = parseInt(res.headers.get('X-Count'), 10) || null;
     const blob = await res.blob();
-    return URL.createObjectURL(blob);
+    return { url: URL.createObjectURL(blob), count };
 }

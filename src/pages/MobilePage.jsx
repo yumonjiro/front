@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef } from 'react';
-import StatusIndicator from '../components/StatusIndicator';
 import { predictAutoImage } from '../api';
 import './MobilePage.css';
 
@@ -11,6 +10,8 @@ export default function MobilePage() {
     const [imageFile, setImageFile] = useState(null);
     const [previewSrc, setPreviewSrc] = useState(null);
     const [resultImageSrc, setResultImageSrc] = useState(null);
+    const [resultCount, setResultCount] = useState(null);
+    const [showOriginal, setShowOriginal] = useState(false);
     const [error, setError] = useState(null);
 
     const fileInputRef = useRef(null);
@@ -39,10 +40,11 @@ export default function MobilePage() {
         setImageFile(file);
         setPreviewSrc(url);
         setResultImageSrc(null);
+        setResultCount(null);
+        setShowOriginal(false);
         setError(null);
         setPhase('preview');
 
-        // Reset input so same file can be re-selected
         e.target.value = '';
     }, [cleanup]);
 
@@ -51,6 +53,8 @@ export default function MobilePage() {
         setImageFile(null);
         setPreviewSrc(null);
         setResultImageSrc(null);
+        setResultCount(null);
+        setShowOriginal(false);
         setError(null);
         setPhase('idle');
     }, [cleanup]);
@@ -61,12 +65,14 @@ export default function MobilePage() {
         setError(null);
 
         try {
-            const imageUrl = await predictAutoImage(imageFile, THRESHOLD);
+            const { url, count } = await predictAutoImage(imageFile, THRESHOLD);
 
             if (prevResultUrl.current) URL.revokeObjectURL(prevResultUrl.current);
-            prevResultUrl.current = imageUrl;
+            prevResultUrl.current = url;
 
-            setResultImageSrc(imageUrl);
+            setResultImageSrc(url);
+            setResultCount(count);
+            setShowOriginal(false);
             setPhase('result');
         } catch (err) {
             setError(err.message || 'カウント処理に失敗しました。');
@@ -79,19 +85,15 @@ export default function MobilePage() {
         setImageFile(null);
         setPreviewSrc(null);
         setResultImageSrc(null);
+        setResultCount(null);
+        setShowOriginal(false);
         setError(null);
         setPhase('idle');
     }, [cleanup]);
 
     return (
         <div className="mobile-page">
-            <header className="mobile-header">
-                <h1>カウント</h1>
-                <StatusIndicator />
-            </header>
-
             <main className="mobile-main">
-                {/* Hidden native camera input */}
                 <input
                     ref={fileInputRef}
                     type="file"
@@ -131,18 +133,39 @@ export default function MobilePage() {
                 )}
 
                 {phase === 'loading' && (
-                    <div className="mobile-loading">
-                        <div className="mobile-spinner" />
-                        <p>カウント中...</p>
+                    <div className="mobile-loading-view">
+                        <div className="mobile-image-container">
+                            <img src={previewSrc} alt="撮影画像" className="mobile-image" />
+                            <div className="mobile-loading-overlay">
+                                <div className="mobile-spinner" />
+                                <p>カウント中...</p>
+                            </div>
+                        </div>
                     </div>
                 )}
 
                 {phase === 'result' && (
                     <div className="mobile-result">
+                        {resultCount != null && (
+                            <div className="mobile-count">
+                                <span className="mobile-count-label">検出数</span>
+                                <span className="mobile-count-value">{resultCount}</span>
+                            </div>
+                        )}
                         <div className="mobile-image-container">
-                            <img src={resultImageSrc} alt="カウント結果" className="mobile-image" />
+                            <img
+                                src={showOriginal ? previewSrc : resultImageSrc}
+                                alt={showOriginal ? '元画像' : 'カウント結果'}
+                                className="mobile-image"
+                            />
                         </div>
                         <div className="mobile-actions">
+                            <button
+                                className={`mobile-btn ${showOriginal ? 'mobile-btn-toggle-active' : 'mobile-btn-toggle'}`}
+                                onClick={() => setShowOriginal(v => !v)}
+                            >
+                                {showOriginal ? '結果を表示' : '元画像を表示'}
+                            </button>
                             <button className="mobile-btn mobile-btn-primary" onClick={handleNext}>
                                 次を撮影
                             </button>

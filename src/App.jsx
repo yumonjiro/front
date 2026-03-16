@@ -118,10 +118,10 @@ export default function App() {
     setError(null);
 
     try {
-      let jsonResult, imageUrl;
+      let jsonResult, imageResult;
 
       if (mode === 'auto') {
-        [jsonResult, imageUrl] = await Promise.all([
+        [jsonResult, imageResult] = await Promise.all([
           predictAuto(imageFile, threshold),
           predictAutoImage(imageFile, threshold),
         ]);
@@ -131,7 +131,7 @@ export default function App() {
           setIsLoading(false);
           return;
         }
-        [jsonResult, imageUrl] = await Promise.all([
+        [jsonResult, imageResult] = await Promise.all([
           predictPointJson(imageFile, points, labels, threshold),
           predictPointImage(imageFile, points, labels, threshold),
         ]);
@@ -141,16 +141,16 @@ export default function App() {
           setIsLoading(false);
           return;
         }
-        [jsonResult, imageUrl] = await Promise.all([
+        [jsonResult, imageResult] = await Promise.all([
           predictBBoxJson(imageFile, bboxes, threshold),
           predictBBoxImage(imageFile, bboxes, threshold),
         ]);
       }
 
       if (prevResultUrl.current) URL.revokeObjectURL(prevResultUrl.current);
-      prevResultUrl.current = imageUrl;
+      prevResultUrl.current = imageResult.url;
 
-      setResultImageSrc(imageUrl);
+      setResultImageSrc(imageResult.url);
       setResultCount(jsonResult.count);
       setResultBoxes(jsonResult.pred_boxes || []);
     } catch (err) {
