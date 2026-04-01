@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { predictAutoImage, predictPointImage, predictBBoxImage } from '../api';
+import { predictAutoImage, predictPointImage, predictBBoxImage, exemplarSessionStart, exemplarSessionAddPoint, exemplarSessionConfirmImage } from '../api';
 import './MobilePage.css';
 
 const THRESHOLD = 0.2;
@@ -298,10 +298,16 @@ export default function MobilePage() {
     const [resultSrc, setResultSrc] = useState(null);
     const [resultCount, setResultCount] = useState(null);
     const [showOriginal, setShowOriginal] = useState(false);
-    const [countMode, setCountMode] = useState('auto'); // 'auto' | 'point' | 'bboxExemplar'
+    const [countMode, setCountMode] = useState('auto'); // 'auto' | 'point' | 'bboxExemplar' | 'exemplar'
     const [points, setPoints] = useState([]);
     const [bboxes, setBboxes] = useState([]);
     const [error, setError] = useState(null);
+    // Exemplar session state
+    const [sessionId, setSessionId] = useState(null);
+    const [exemplarSrc, setExemplarSrc] = useState(null);
+    const [exemplarCount, setExemplarCount] = useState(0);
+    const [exemplarLoading, setExemplarLoading] = useState(false);
+    const prevExemplarUrl = useRef(null);
 
     const fileInputRef = useRef(null);
     const prevPreviewUrl = useRef(null);
@@ -310,8 +316,19 @@ export default function MobilePage() {
     const cleanup = useCallback(() => {
         if (prevPreviewUrl.current) URL.revokeObjectURL(prevPreviewUrl.current);
         if (prevResultUrl.current) URL.revokeObjectURL(prevResultUrl.current);
+        if (prevExemplarUrl.current) URL.revokeObjectURL(prevExemplarUrl.current);
         prevPreviewUrl.current = null;
         prevResultUrl.current = null;
+        prevExemplarUrl.current = null;
+    }, []);
+
+    const resetExemplarState = useCallback(() => {
+        setSessionId(null);
+        if (prevExemplarUrl.current) URL.revokeObjectURL(prevExemplarUrl.current);
+        prevExemplarUrl.current = null;
+        setExemplarSrc(null);
+        setExemplarCount(0);
+        setExemplarLoading(false);
     }, []);
 
     const handleCapture = useCallback(() => {
@@ -334,6 +351,7 @@ export default function MobilePage() {
         setPoints([]);
         setBboxes([]);
         setError(null);
+        resetExemplarState();
         setPhase('preview');
 
         e.target.value = '';
@@ -349,13 +367,39 @@ export default function MobilePage() {
         setPoints([]);
         setBboxes([]);
         setError(null);
+        resetExemplarState();
         setPhase('idle');
-    }, [cleanup]);
+    }, [cleanup, resetExemplarState]);
+
+    const handleExemplarAddPoint = useCallback(async (pt) => {
+        if (!imageFile) return;
+        setExemplarLoading(true);
+        setError(null);
+        try {
+            let sid = sessionId;
+            if (!sid) {
+                const startRes = await exemplarSessionStart(imageFile);
+                sid = startRes.session_id;
+                setSessionId(sid);
+            }
+            const res = await exemplarSessionAddPoint(sid, pt[0], pt[1]);
+            if (prevExemplarUrl.current) URL.revokeObjectURL(prevExemplarUrl.current);
+            prevExemplarUrl.current = res.url;
+            setExemplarSrc(res.url);
+            setExemplarCount(res.exemplarCount);
+            setPoints(prev => [...prev, pt]);
+        } catch (err) {
+            setError(err.message || 'ポイント追加に失敗しました。');
+        } finally {
+            setExemplarLoading(false);
+        }
+    }, [imageFile, sessionId]);
 
     const handleSubmit = useCallback(async () => {
         if (!imageFile) return;
         if (countMode === 'point' && points.length === 0) return;
         if (countMode === 'bboxExemplar' && bboxes.length === 0) return;
+        if (countMode === 'exemplar' && !sessionId) return;
         setPhase('loading');
         setError(null);
 
@@ -365,6 +409,9 @@ export default function MobilePage() {
                 result = await predictAutoImage(imageFile, THRESHOLD);
             } else if (countMode === 'point') {
                 result = await predictPointImage(imageFile, points, points.map(() => 1), THRESHOLD);
+            } else if (countMode === 'exemplar') {
+                result = await exemplarSessionConfirmImage(sessionId, THRESHOLD);
+                setSessionId(null); // session destroyed server-side
             } else {
                 result = await predictBBoxImage(imageFile, bboxes, THRESHOLD);
             }
@@ -380,11 +427,12 @@ export default function MobilePage() {
             setError(err.message || 'カウント処理に失敗しました。');
             setPhase('preview');
         }
-    }, [imageFile, countMode, points, bboxes]);
+    }, [imageFile, countMode, points, bboxes, sessionId]);
 
     const handleUndo = useCallback(() => {
         if (countMode === 'point') setPoints(prev => prev.slice(0, -1));
         else if (countMode === 'bboxExemplar') setBboxes(prev => prev.slice(0, -1));
+        // exemplar mode: no undo (server-side state)
     }, [countMode]);
 
     const handleNext = useCallback(() => {
@@ -397,9 +445,10 @@ export default function MobilePage() {
         setPoints([]);
         setBboxes([]);
         setError(null);
+        resetExemplarState();
         setPhase('idle');
         setTimeout(() => fileInputRef.current?.click(), 0);
-    }, [cleanup]);
+    }, [cleanup, resetExemplarState]);
 
     return (
         <div className="mobile-page">
@@ -434,6 +483,28 @@ export default function MobilePage() {
                     <div className="mobile-preview">
                         {countMode === 'auto' ? (
                             <ZoomableImage src={previewSrc} alt="撮影画像" />
+                        ) : countMode === 'exemplar' ? (
+                            <>
+                                <AnnotatableImage
+                                    src={exemplarSrc || previewSrc}
+                                    mode="point"
+                                    points={points}
+                                    bboxes={[]}
+                                    onAddPoint={handleExemplarAddPoint}
+                                    onAddBBox={() => {}}
+                                />
+                                {exemplarLoading && (
+                                    <div className="mobile-exemplar-loading">
+                                        <div className="mobile-spinner-small" />
+                                        {!sessionId ? 'セッション開始中...' : '処理中...'}
+                                    </div>
+                                )}
+                                <div className="mobile-annotation-info">
+                                    {exemplarCount > 0
+                                        ? `${exemplarCount}グループ検出 — タップで追加`
+                                        : `${points.length}点指定 — タップで追加`}
+                                </div>
+                            </>
                         ) : (
                             <>
                                 <AnnotatableImage
@@ -454,26 +525,32 @@ export default function MobilePage() {
                         <div className="mobile-tabs">
                             <button
                                 className={`mobile-tab ${countMode === 'auto' ? 'mobile-tab-active' : ''}`}
-                                onClick={() => { setCountMode('auto'); setPoints([]); setBboxes([]); }}
+                                onClick={() => { setCountMode('auto'); setPoints([]); setBboxes([]); resetExemplarState(); }}
                             >
-                                そのまま送信
+                                自動
                             </button>
                             <button
                                 className={`mobile-tab ${countMode === 'point' ? 'mobile-tab-active' : ''}`}
-                                onClick={() => { setCountMode('point'); setBboxes([]); }}
+                                onClick={() => { setCountMode('point'); setBboxes([]); resetExemplarState(); }}
                             >
-                                ポイント指定
+                                ポイント
                             </button>
                             <button
                                 className={`mobile-tab ${countMode === 'bboxExemplar' ? 'mobile-tab-active' : ''}`}
-                                onClick={() => { setCountMode('bboxExemplar'); setPoints([]); }}
+                                onClick={() => { setCountMode('bboxExemplar'); setPoints([]); resetExemplarState(); }}
                             >
-                                BBox指定
+                                BBox
+                            </button>
+                            <button
+                                className={`mobile-tab ${countMode === 'exemplar' ? 'mobile-tab-active' : ''}`}
+                                onClick={() => { setCountMode('exemplar'); setPoints([]); setBboxes([]); resetExemplarState(); }}
+                            >
+                                Exemplar
                             </button>
                         </div>
                         {error && <div className="mobile-error">{error}</div>}
                         <div className="mobile-actions">
-                            {countMode !== 'auto' && (points.length > 0 || bboxes.length > 0) && (
+                            {countMode !== 'auto' && countMode !== 'exemplar' && (points.length > 0 || bboxes.length > 0) && (
                                 <button className="mobile-btn mobile-btn-secondary" onClick={handleUndo}>
                                     取消
                                 </button>
@@ -484,9 +561,14 @@ export default function MobilePage() {
                             <button
                                 className="mobile-btn mobile-btn-primary"
                                 onClick={handleSubmit}
-                                disabled={countMode === 'point' ? points.length === 0 : countMode === 'bboxExemplar' ? bboxes.length === 0 : false}
+                                disabled={
+                                    countMode === 'point' ? points.length === 0
+                                    : countMode === 'bboxExemplar' ? bboxes.length === 0
+                                    : countMode === 'exemplar' ? !sessionId
+                                    : false
+                                }
                             >
-                                送信
+                                {countMode === 'exemplar' ? '確定して送信' : '送信'}
                             </button>
                         </div>
                     </div>

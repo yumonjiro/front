@@ -282,3 +282,24 @@ body:has(.mobile-page) #root {
 .mobile-btn:disabled {
     opacity: 0.4;
 }
+
+/* === Exemplar mode === */
+.mobile-exemplar-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    color: #6b7280;
+    flex-shrink: 0;
+}
+
+.mobile-spinner-small {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e5e7eb;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: mobile-spin 0.8s linear infinite;
+}

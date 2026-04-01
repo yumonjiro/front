@@ -19,6 +19,11 @@ export default defineConfig({
         timeout: 300000,
         proxyTimeout: 300000,
       },
+      '/exemplar_session': {
+        target: 'http://localhost:7860',
+        timeout: 300000,
+        proxyTimeout: 300000,
+      },
       '/health': 'http://localhost:7860',
       '/debug': 'http://localhost:7860',
     },

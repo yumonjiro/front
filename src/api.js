@@ -119,3 +119,62 @@ export async function predictBBoxImage(imageFile, bboxes, threshold = 0.33) {
     const blob = await res.blob();
     return { url: URL.createObjectURL(blob), count };
 }
+
+// ── Exemplar Session ──
+
+// Start session: upload image → backbone → cache feats → session_id
+export async function exemplarSessionStart(imageFile) {
+    const form = new FormData();
+    form.append('image', imageFile);
+    const res = await fetch(`${API_BASE}/exemplar_session/start`, {
+        method: 'POST',
+        body: form,
+    });
+    await handleResponse(res);
+    return res.json(); // { session_id }
+}
+
+// Add point: mask decoder only (~10-20ms) → composite JPEG
+export async function exemplarSessionAddPoint(sessionId, x, y) {
+    const form = new FormData();
+    form.append('session_id', sessionId);
+    form.append('point', JSON.stringify([x, y]));
+    const res = await fetch(`${API_BASE}/exemplar_session/add_point`, {
+        method: 'POST',
+        body: form,
+    });
+    await handleResponse(res);
+    const exemplarCount = parseInt(res.headers.get('X-Exemplar-Count'), 10) || 0;
+    let exemplarBboxes = [];
+    try { exemplarBboxes = JSON.parse(res.headers.get('X-Exemplar-Bboxes') || '[]'); } catch { /* ignore */ }
+    const blob = await res.blob();
+    return { url: URL.createObjectURL(blob), exemplarCount, exemplarBboxes };
+}
+
+// Confirm session → JSON result → session destroyed
+export async function exemplarSessionConfirm(sessionId, threshold = 0.33) {
+    const form = new FormData();
+    form.append('session_id', sessionId);
+    form.append('threshold', String(threshold));
+    const res = await fetch(`${API_BASE}/exemplar_session/confirm`, {
+        method: 'POST',
+        body: form,
+    });
+    await handleResponse(res);
+    return res.json();
+}
+
+// Confirm session → BB-drawn image → session destroyed
+export async function exemplarSessionConfirmImage(sessionId, threshold = 0.33) {
+    const form = new FormData();
+    form.append('session_id', sessionId);
+    form.append('threshold', String(threshold));
+    const res = await fetch(`${API_BASE}/exemplar_session/confirm/image`, {
+        method: 'POST',
+        body: form,
+    });
+    await handleResponse(res);
+    const count = parseInt(res.headers.get('X-Count'), 10) || null;
+    const blob = await res.blob();
+    return { url: URL.createObjectURL(blob), count };
+}
